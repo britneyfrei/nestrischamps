@@ -1,3 +1,9 @@
+# NESTrisChamps Performance Summary Dashboard
+
+Fork of NESTrisChamps project. Adds Performance Summary Dashboard page, integrating with existing Scores and Progress pages.
+
+<img width="1900" height="939" alt="image" src="https://github.com/user-attachments/assets/2d943e6a-35f9-429e-902e-e2e23da9eea8" />
+
 # NESTrisChamps
 
 NESTrisChamps is a browser-based game capture and rendering system for NES classic Tetris.
