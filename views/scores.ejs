@@ -2,7 +2,7 @@
 <html>
 <head>
 		<%- include('partials/gtm_head') %>
-		<title>NestrisChamps: user settings</title>
+		<title>NestrisChamps: Scores</title>
 		<link rel="stylesheet" href="/vendor/bulma.1.0.4.min.css">
 		<style>
 			.navbar-item img {
@@ -24,14 +24,11 @@
 
 <section class="section">
 	<div class="container content">
-		<h1 class="title is-1">Score Summary <span class="title is-5"><%= filter.current %></span></h1>
-
-		<p class="is-size-7">
-		<% filter.links.forEach((a, idx) => { %>
-			<% if (idx > 0) { %> - <% } %>
-			<a href="<%= a.href %>" class="filter"><%= a.text %></a>
-		<% }) %>
-		</p>
+		<h1 class="title is-1">Score Summary</h1>
+		<div class="is-flex is-align-items-center">
+			<%- include('partials/filters') %>
+			<a class="mb-3 ml-3" href="/stats/scores">see all scores</a>
+		</div>
 
 		<%- include('partials/pagination') %>
 
@@ -54,9 +51,9 @@
 		</thead>
 		<tbody>
 			<% scores.forEach((score, idx) => { %>
-			<% const datetime = score.datetime.toISOString(); %>
+			<% const datetime = score.datetime.toLocaleString({ dateStyle: 'short', timeStyle: 'short' }) %>
 			<tr>
-				<td title="<%=datetime%>"><%= datetime.substr(0, 16).replace('T', ' ') %></td>
+				<td title="<%=datetime%>"><%= datetime %></td>
 				<td class="data-number" align="right"><%= score.start_level %></td>
 				<td class="data-number" align="right"><%= score.end_level %></td>
 				<td class="score data-number" align="right"><%= (score.score || 0).toString().padStart(6, '0') %></td>
@@ -361,6 +358,18 @@
 	});
 	/**/
 
+	// Auto-expand details if a game_id is provided in pagination
+	if (pagination.game_ids && pagination.game_ids.length === 1) {
+			const targetLink = document.querySelector(`a.details_score[href$='/${pagination.game_ids[0]}']`);
+			if (targetLink) {
+					targetLink.click();
+			}
+	}
+
+	const paginationItems = document.querySelectorAll('nav li');
+			if (paginationItems.length <= 2) {
+				paginationItems.forEach(li => li.remove());
+			}
 	</script>
 
 </body>

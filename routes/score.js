@@ -192,39 +192,126 @@ function getPages(page_idx, num_pages) {
 	return pages;
 }
 
-function getCompetitionFilter(req, res, next) {
-	const filter = {};
+// Allowed filter values
+const ALLOWED_MODES = ['0', '1']; // '0' = non-competition, '1' = competition
+const ALLOWED_START_LEVELS = ['18', '19', '29'];
+const ALLOWED_MONTH_RANGES = {
+	1: 'Last 30 days',
+	3: 'Last 3 months',
+	6: 'Last 6 months',
+	12: 'Last 12 months',
+};
+const allowedCategories = ['highlights', 'averages', 'overall'];
 
-	if (/^[01]$/.test(req.query.competition)) {
-		filter.competition = req.query.competition === '1';
-		filter.current = filter.competition
-			? 'Competition scores'
-			: 'Non-Competition scores';
-		filter.links = [
-			filter.competition
-				? { text: 'show non-competition scores', href: '#competition=0' }
-				: { text: 'show competition scores', href: '#competition=1' },
-			{ text: 'show all scores', href: '#' },
-		];
-	} else {
-		filter.competition = null;
-		filter.current = 'All scores';
-		filter.links = [
-			{ text: 'show competition scores', href: '#competition=1' },
-			{ text: 'show non-competition scores', href: '#competition=0' },
-		];
+function buildFilters(req, res, next) {
+	const filters = [];
+
+	// Competition
+	const compQuery = req.query.competition;
+	const competition = ALLOWED_MODES.includes(compQuery) ? compQuery : null;
+	filters.push({
+		name: 'competition',
+		label: 'Competition',
+		value: competition,
+		options: [
+			{
+				value: '',
+				label: 'All competition types',
+				selected: competition === null,
+			},
+			{ value: '1', label: 'Competition', selected: competition === '1' },
+			{ value: '0', label: 'Non-competition', selected: competition === '0' },
+		],
+	});
+
+	// Start level
+	const slQuery = req.query.start_level;
+	const startLevel = ALLOWED_START_LEVELS.includes(slQuery) ? slQuery : null;
+	filters.push({
+		name: 'start_level',
+		label: 'Start Level',
+		value: startLevel,
+		options: [
+			{ value: '', label: 'All levels', selected: startLevel === null },
+			...ALLOWED_START_LEVELS.map(l => ({
+				value: l.toString(),
+				label: `Level ${l}`,
+				selected: startLevel === l,
+			})),
+		],
+	});
+
+	// Since
+	const sinceQuery = req.query.since;
+	const since = Object.keys(ALLOWED_MONTH_RANGES).includes(sinceQuery)
+		? sinceQuery
+		: null;
+	filters.push({
+		name: 'since',
+		label: 'Since',
+		value: since,
+		options: [
+			{ value: '', label: 'All time', selected: since === null },
+			...Object.entries(ALLOWED_MONTH_RANGES).map(([val, label]) => ({
+				value: val,
+				label,
+				selected: since === val,
+			})),
+		],
+	});
+
+	const selected = {};
+	filters.forEach(f => {
+		const selOpt = f.options.find(opt => opt.selected);
+		if (selOpt) selected[f.name] = selOpt;
+	});
+
+	req.ntc = Object.assign(req.ntc || {}, { filters, selected });
+	next();
+}
+
+function buildOptionsFromQuery(query, optionsToBuild) {
+	const options = {};
+
+	if (
+		optionsToBuild.includes('start_level') &&
+		ALLOWED_START_LEVELS.includes(query.start_level)
+	) {
+		options.start_level = query.start_level;
 	}
 
-	req.ntc = Object.assign(req.ntc || {}, { filter });
+	if (
+		optionsToBuild.includes('competition') &&
+		ALLOWED_MODES.includes(query.competition)
+	) {
+		options.competition = query.competition === '1';
+	}
 
-	next();
+	const now = Math.floor(Date.now() / 1000);
+	const monthsToDays = months => months * 30; // approximate month -> days
+	const secondsAgo = days => now - days * 24 * 3600;
+
+	if (optionsToBuild.includes('since') && ALLOWED_MONTH_RANGES[query.since]) {
+		const days = monthsToDays(parseInt(query.since, 10));
+		options.since = secondsAgo(days);
+		options.since_prev_start = secondsAgo(days * 2);
+		options.since_prev_end = options.since;
+	}
+
+	if (optionsToBuild.includes('until') && ALLOWED_MONTH_RANGES[query.until]) {
+		const days = monthsToDays(parseInt(query.until, 10));
+		options.until = secondsAgo(days);
+	}
+
+	return options;
 }
 
 router.get(
 	'/scores',
 	middlewares.assertSession,
 	middlewares.checkToken,
-	getCompetitionFilter,
+	middlewares.attachQueryString,
+	buildFilters,
 	async (req, res) => {
 		console.log(`Fetching user scores for ${req.session.user.id}`);
 
@@ -242,23 +329,38 @@ router.get(
 			sort_field: 'datetime',
 			sort_order: 'desc',
 			page_idx: 0,
-			competition: null,
+			game_ids: null,
+			...buildOptionsFromQuery(req.query, [
+				'competition',
+				'start_level',
+				'since',
+				'until',
+			]),
 		};
+
+		let filters = req.ntc.filters;
+		if (ALLOWED_MONTH_RANGES[req.query.until]) {
+			filters = filters.filter(x => x.name !== 'since');
+		}
 
 		// validate and get args from query
 		if (ALLOWED_ORDER_FIELDS.includes(req.query.sort_field)) {
 			options.sort_field = req.query.sort_field;
 		}
-
 		if (ALLOWED_ORDER_DIRS.includes(req.query.sort_order)) {
 			options.sort_order = req.query.sort_order;
 		}
-
 		if (/^\d+$/.test(req.query.page_idx)) {
 			options.page_idx = parseInt(req.query.page_idx, 10);
 		}
 
-		options.competition = req.ntc.filter.competition;
+		// handle specific game_ids if provided
+		if (req.query.game_ids) {
+			options.game_ids = req.query.game_ids
+				.split(',')
+				.map(id => parseInt(id, 10))
+				.filter(id => !isNaN(id));
+		}
 
 		const num_scores = await ScoreDAO.getNumberOfScores(
 			req.session.user,
@@ -275,7 +377,7 @@ router.get(
 			scores,
 			num_pages,
 			pagination: options,
-			filter: req.ntc.filter,
+			filters,
 			pages: getPages(options.page_idx, num_pages),
 		});
 	}
@@ -375,10 +477,15 @@ router.get(
 	'/progress/data',
 	middlewares.assertSession,
 	middlewares.checkToken,
-	getCompetitionFilter,
 	async (req, res) => {
+		const { competition, since } = buildOptionsFromQuery(req.query, [
+			'competition',
+			'since',
+		]);
+
 		const progress = await ScoreDAO.getProgress(req.session.user, {
-			competition: req.ntc.filter.competition,
+			competition,
+			since,
 		});
 
 		progress.forEach(datapoint => {
@@ -394,14 +501,16 @@ router.get(
 	'/progress/data-1819',
 	middlewares.assertSession,
 	middlewares.checkToken,
-	getCompetitionFilter,
 	async (req, res) => {
+		const { competition, since } = buildOptionsFromQuery(req.query, ['competition', 'since']);
+
 		const data = {};
 
 		for (const start_level of [18, 19, 29]) {
 			const progress = await ScoreDAO.getProgress(req.session.user, {
 				start_level,
-				competition: req.ntc.filter.competition,
+				competition,
+				since,
 			});
 
 			progress.forEach(datapoint => {
@@ -420,10 +529,35 @@ router.get(
 	'/progress',
 	middlewares.assertSession,
 	middlewares.checkToken,
-	getCompetitionFilter,
+	middlewares.attachQueryString,
+	buildFilters,
 	async (req, res) => {
 		res.render('progress', {
-			filter: req.ntc.filter,
+			filters: req.ntc.filters.filter(x => x.name !== 'start_level'),
+		});
+	}
+);
+
+router.get(
+	'/performance',
+	middlewares.assertSession,
+	middlewares.checkToken,
+	middlewares.attachQueryString,
+	buildFilters,
+	async (req, res) => {
+		const { user } = req.session;
+		const { filters, selected } = req.ntc;
+		const options = buildOptionsFromQuery(req.query, [
+			'competition',
+			'start_level',
+			'since',
+		]);
+
+		const stats = await ScoreDAO.getPerformanceSummary(user, options);
+		res.render('performance', {
+			stats,
+			filters,
+			selected,
 		});
 	}
 );

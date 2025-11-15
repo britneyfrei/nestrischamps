@@ -1,0 +1,35 @@
+<div class="field is-grouped">
+  <% filters.forEach(f => { %>
+  <div class="control">
+    <div class="select">
+      <select id="<%= f.name %>" onchange="location.href=this.value">
+        <% f.options.forEach(opt => { %>
+        <option value="<%= opt.value %>" <%= opt.selected ? 'selected' : '' %>>
+          <%= opt.label %>
+        </option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+  <% }) %>
+</div>
+<script>
+  // Intercept changes on filter dropdowns and merge parameters into the current querystring
+  document.querySelectorAll('select[id]').forEach(sel => {
+    sel.addEventListener('change', (evt) => {
+      const value = evt.target.value;
+      const key = evt.target.id;
+
+      const url = new URL(location);
+
+      if (value === '') {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, value);
+      }
+
+      // reload so the server-rendered page reflects the new filters
+      location.href = `${url.pathname}${url.search}`;
+    });
+  });
+</script>
