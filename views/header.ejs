@@ -94,10 +94,16 @@
 						<a class="navbar-item" href="/room/admin">
 							Administer my match room
 						</a>
-						<a class="navbar-item" href="/stats/scores">
+
+						<hr class="navbar-divider">
+						
+						<a class="navbar-item" href="/stats/performance<%= (typeof query_string !== 'undefined') ? query_string : '' %>">
+							My performance summary
+						</a>
+						<a class="navbar-item" href="/stats/scores<%= (typeof query_string !== 'undefined') ? query_string : '' %>">
 							My scores and replays
 						</a>
-						<a class="navbar-item" href="/stats/progress">
+						<a class="navbar-item" href="/stats/progress<%= (typeof query_string !== 'undefined') ? query_string : '' %>">
 							My progress chart
 						</a>
 

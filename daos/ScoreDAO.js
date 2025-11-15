@@ -303,20 +303,14 @@ class ScoreDAO {
 	}
 
 	async getNumberOfScores(user, options = {}) {
-		const args = [user.id];
-		let additional_conditions = '';
-
-		if ([true, false].includes(options.competition)) {
-			args.push(options.competition);
-			additional_conditions += ` AND competition=$${args.length} `;
-		}
+		const { args, conditions } = this.buildConditions(user, options);
 
 		const result = await dbPool.query(
 			`
-				SELECT count(*)
-				FROM scores
-				WHERE player_id=$1 ${additional_conditions}
-			`,
+			SELECT count(*)
+			FROM scores
+			WHERE ${conditions}
+		`,
 			args
 		);
 
@@ -333,7 +327,7 @@ class ScoreDAO {
 			...options,
 		};
 
-		const args = [user.id];
+		const { args, conditions } = this.buildConditions(user, options);
 
 		let null_handling = '';
 
@@ -342,22 +336,16 @@ class ScoreDAO {
 				options.sort_order === 'desc' ? 'NULLS last' : 'NULLS first';
 		}
 
-		let filter_by_competition_mode = '';
-
-		if ([true, false].includes(options.competition)) {
-			args.push(options.competition);
-			filter_by_competition_mode = ` AND competition=$${args.length} `;
-		}
-
-		// WARNING: this query uses plain JS variable interpolation, parameters MUST be sane
+		// WARNING: this query uses plain JS variable interpolation, parameters MUST be safe
 		const result = await dbPool.query(
 			`
-				SELECT id, datetime, start_level, end_level, score, lines, tetris_rate, num_droughts, max_drought, das_avg, duration, frame_file, competition
-				FROM scores
-				WHERE player_id=$1 ${filter_by_competition_mode}
-				ORDER BY ${options.sort_field} ${options.sort_order} ${null_handling}
-				LIMIT ${options.page_size} OFFSET ${options.page_size * options.page_idx}
-			`,
+			SELECT id, datetime, start_level, end_level, score, lines, tetris_rate,
+				   num_droughts, max_drought, das_avg, duration, frame_file, competition
+			FROM scores
+			WHERE ${conditions}
+			ORDER BY ${options.sort_field} ${options.sort_order} ${null_handling}
+			LIMIT ${options.page_size} OFFSET ${options.page_size * options.page_idx}
+		`,
 			args
 		);
 
@@ -401,30 +389,19 @@ class ScoreDAO {
 		return result.rowCount === 1;
 	}
 
-	async getProgress(user, { start_level = null, competition = null }) {
-		const args = [user.id];
-		let optional_conditions = '';
-
-		if (start_level !== null && start_level >= 0 && start_level <= 29) {
-			args.push(start_level);
-			optional_conditions += ` AND s.start_level=$${args.length}`;
-		}
-
-		if (competition != null) {
-			args.push(!!competition);
-			optional_conditions += ` AND s.competition=$${args.length}`;
-		}
+	async getProgress(user, options = {}) {
+		const { args, conditions } = this.buildConditions(user, options);
 
 		const result = await dbPool.query(
 			`
 			SELECT
 				session,
-				min(s.datetime) AS datetime,
-				count(s.id) AS num_games,
-				max(s.score) AS max_score,
-				round(avg(s.score)) AS avg_score
-			FROM scores s
-			WHERE s.player_id=$1 ${optional_conditions}
+				min(datetime) AS datetime,
+				count(id) AS num_games,
+				max(score) AS max_score,
+				round(avg(score)) AS avg_score
+			FROM scores
+			WHERE ${conditions}
 			GROUP BY session
 			ORDER BY session asc
 			`,
@@ -495,6 +472,164 @@ class ScoreDAO {
 		);
 
 		return result.rowCount === 1;
+	}
+
+	// buildConditions: build parameter array and WHERE clause fragment for score queries
+	buildConditions(user, options = {}) {
+		const args = [user.id];
+		let conditions = `player_id=$1`;
+
+		if (options.start_level != null) {
+			args.push(options.start_level);
+			conditions += ` AND start_level=$${args.length}`;
+		}
+		if (options.competition === true || options.competition === false) {
+			args.push(!!options.competition);
+			conditions += ` AND competition=$${args.length}`;
+		}
+		if (options.since != null) {
+			args.push(options.since);
+			conditions += ` AND datetime >= to_timestamp($${args.length})`;
+		}
+		if (options.until != null) {
+			args.push(options.until);
+			conditions += ` AND datetime < to_timestamp($${args.length})`;
+		}
+
+		if (options.game_ids && options.game_ids.length > 0) {
+			const placeholders = options.game_ids.map(id => {
+				args.push(id);
+				return `$${args.length}`;
+			});
+			conditions += ` AND id IN (${placeholders.join(',')}) `;
+		}
+
+		return { args, conditions };
+	}
+
+	async getHighlightStats(args, conditions) {
+		const hightlights = [
+			{ stat: 'highest_score', select: 'score' },
+			{
+				stat: 'highest_transition',
+				select: 'CASE WHEN transition IS NOT NULL THEN transition END',
+			},
+			{
+				stat: 'highest_post',
+				select: 'CASE WHEN transition IS NOT NULL THEN score - transition END',
+			},
+			{ stat: 'highest_lines', select: 'lines' },
+		];
+
+		const stats = {};
+		for (const hl of hightlights) {
+			const result = await dbPool.query(
+				`
+				SELECT id, datetime, ${hl.select} as value
+				FROM scores
+				WHERE ${conditions} AND ${hl.select} IS NOT NULL
+				ORDER BY value DESC
+				LIMIT 1
+				`,
+				args
+			);
+
+			const row = result.rows[0];
+			stats[hl.stat] = row
+				? {
+						value: row.value,
+						ids: [row.id],
+						datetime: row.datetime,
+					}
+				: {
+						value: null,
+						ids: [],
+						datetime: null,
+					};
+		}
+
+		return stats;
+	}
+
+	async getAveragesAndOverallStats(args, conditions) {
+		const result = await dbPool.query(
+			`
+			SELECT
+				AVG(score)::float AS avg_score,
+				AVG(CASE WHEN transition IS NOT NULL THEN transition::INTEGER END)::float AS avg_transition,
+				AVG(CASE WHEN transition IS NOT NULL THEN score - transition END)::float AS avg_post,
+				AVG(lines)::float AS avg_lines,
+				COUNT(id)::integer AS num_games,
+				SUM(CASE WHEN transition IS NOT NULL AND transition<>0 THEN 1 ELSE 0 END)::float / COUNT(*) * 100 AS transition_rate,
+				STDDEV(score)::float AS score_stddev,
+				SUM(CASE WHEN score > 999999 THEN 1 ELSE 0 END)::integer AS num_maxouts
+			FROM scores
+			WHERE ${conditions}
+			`,
+			args
+		);
+
+		const stats = result.rows[0];
+		for (const stat of Object.keys(stats)) {
+			stats[stat] = { value: stats[stat], ids: [], datetime: null };
+		}
+
+		return result.rows.length > 0 ? result.rows[0] : {};
+	}
+
+	getFullStatObjects(current, previous) {
+		const stats = {};
+		for (const key of Object.keys(current)) {
+			const cur = current[key];
+			const prev = previous ? previous[key] : undefined;
+
+			const delta =
+				prev && prev.value != null && cur.value != null
+					? cur.value - prev.value
+					: null;
+
+			const pct_change =
+				prev && prev.value != null && prev.value !== 0
+					? (delta / Math.abs(prev.value)) * 100
+					: null;
+
+			stats[key] = {
+				value: cur.value,
+				delta,
+				pct_change,
+				current_ids: cur.ids,
+				previous_ids: prev ? prev.ids : [],
+				datetime: cur.datetime || null,
+			};
+		}
+
+		return stats;
+	}
+
+	async getPerformanceSummaryStats(user, options) {
+		const { args, conditions } = this.buildConditions(user, options);
+		const highlights = await this.getHighlightStats(args, conditions);
+		const averagesAndOveralls = await this.getAveragesAndOverallStats(
+			args,
+			conditions
+		);
+
+		return { ...highlights, ...averagesAndOveralls };
+	}
+
+	async getPerformanceSummary(user, options = {}) {
+		const current = await this.getPerformanceSummaryStats(user, options);
+
+		let previous = null;
+		if (options && options.since) {
+			previous = await this.getPerformanceSummaryStats(user, {
+				...options,
+				since: options.since_prev_start,
+				until: options.since_prev_end,
+			});
+		}
+
+		return this.getFullStatObjects(current, previous);
 	}
 }
 

@@ -1,0 +1,246 @@
+<%
+  function fmtNumber(n) {
+    return Math.round(Number(n)).toLocaleString();
+  }
+
+  function fmtDecimal(n, decimals) {
+    return Number(n).toFixed(decimals == null ? 0 : decimals);
+  }
+
+  function fmtDurationParts(ms) {
+    const totalSec = Math.round(Number(ms) / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return { m, s };
+  }
+
+  function fmtDateLong(dt) {
+    const d = new Date(dt);
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return d.toLocaleDateString(undefined, options);
+  }
+
+    function fmtMainValue() {
+    if (value == null) return null;
+    if (format === 'number') return fmtNumber(value) + (unit ? (' ' + unit) : '');
+    if (format === 'percent') return fmtDecimal(value, 1) + (unit ? unit : '');
+    if (format === 'decimal') return fmtDecimal(value, 1) + (unit ? (' ' + unit) : '');
+    if (format === 'duration') {
+      const d = fmtDurationParts(value);
+      return d ? (d.m + ' min ' + d.s + ' sec') : null;
+    }
+    return String(value) + (unit ? (' ' + unit) : '');
+  }
+
+  function fmtDeltaValue() {
+    if (delta == null) return null;
+    if (format === 'number') return fmtNumber(Math.abs(delta)) + (unit ? (' ' + unit) : '');
+    if (format === 'percent') return fmtDecimal(Math.abs(delta), 1) + (unit ? unit : '');
+    if (format === 'decimal') return fmtDecimal(Math.abs(delta), 1) + (unit ? (' ' + unit) : '');
+    if (format === 'duration') {
+      const pd = fmtDurationParts(Math.abs(delta));
+      return pd ? ((delta > 0 ? '+' : (delta < 0 ? '-' : '')) + pd.m + ' min ' + pd.s + ' sec') : null;
+    }
+    return String(delta) + (unit ? (' ' + unit) : '');
+  }
+
+  function buildFilterText(sel) {
+    if (!sel) return '';
+    const parts = [];
+    parts.push(sel.competition?.value ? `in <strong>${sel.competition.label.toLowerCase()}</strong>` : `in <strong>competition and non-competition games</strong>`);
+    parts.push(sel.start_level?.value ? `starting at <strong>${sel.start_level.label.toLowerCase()}</strong>` : `across <strong>all levels</strong>`);
+    parts.push(sel.since?.value ? `during the <strong>${sel.since.label.toLowerCase()}</strong>` : `across <strong>all time</strong>`);
+    return parts.join(' ');
+  }
+%>
+<%
+  const _datetime = (typeof datetime !== 'undefined') ? datetime : null;
+  const _flip_colors = (typeof flip_colors !== 'undefined') ? flip_colors : false;
+
+  const _main = fmtMainValue();
+  const _delta = fmtDeltaValue();
+  const _filterText = buildFilterText(selected);
+  const _pct = (delta != null && pct_change != null) ? fmtDecimal(Math.abs(pct_change), 1) + '%' : null;
+
+  let explanation = '-';
+  if (_main) {
+    explanation = `Your <strong>${description}</strong> ${_filterText} is <strong>${_main}</strong> ${_datetime ? '(achieved on <strong>' + fmtDateLong(_datetime) + '</strong>)' : ''}`;
+
+    if (delta != null) {
+      if (delta === 0) {
+        explanation += `, which is <strong>the same as</strong> the previous period`;
+      } else {
+        const computeColorWord = (value, positiveWord, negativeWord) => {
+          const isPositive = value >= 0;
+          const cssClass = (isPositive !== _flip_colors) ? 'has-text-success' : 'has-text-danger';
+          const word = isPositive ? positiveWord : negativeWord;
+          return { cssClass, word };
+        };
+
+        const { cssClass: abClass, word: abWord } = computeColorWord(delta, 'above', 'below');
+        explanation += `, which is <strong>${_delta} <span class="${abClass}">${abWord}</span></strong> the previous period`;
+
+        if (_pct) {
+          const { cssClass: pctClass, word: pctWord } = computeColorWord(pct_change, 'increase', 'decrease');
+          explanation += `, a percent <strong class="${pctClass}">${pctWord}</strong> of <strong>${_pct}</strong>`;
+        }
+
+        explanation += '.';
+      }
+    } else {
+      explanation += '.';
+    }
+  }
+%>
+<%
+  // unique id for this partial instance (keeps JS behavior scoped)
+  const _uid = 'statbox-' + (new Date().getTime()) + '-' + Math.floor(Math.random()*10000);
+%>
+<fieldset class="fieldset content" id="<%= _uid %>">
+  <legend class="is-flex is-align-items-center">
+    <%= title %>
+    <span class="icon is-small is-clickable ml-2 px-2 stat-info-btn" role="button" tabindex="0" aria-expanded="false" aria-controls="<%= _uid %>-explanation" id="<%= _uid %>-btn">
+      <i class="far fa-circle-question" aria-hidden="true"></i>
+    </span>
+  </legend>
+  <div id="<%= _uid %>-content">
+    <!-- Icon + value row -->
+    <div class="is-flex is-align-items-center is-clickable <%= (!_datetime ? 'mb-4' : '') %>" id="<%= _uid %>-value">
+      <span class="is-size-4 has-text-weight-bold icon-col"><%= icon %></span>
+      <p class="is-size-4 has-text-weight-bold is-clickable <%= (_datetime ? 'mb-0' : '') %>" title="See game(s) in this time period">
+        <% if (value == null) { %>
+        -
+        <% } else { %>
+        <% if (format === 'percent') { %>
+        <%= fmtDecimal(value, 1) %><% if (unit) { %><span class="is-size-6"><%= unit %></span><% } %>
+        <% } else if (format === 'number') { %>
+        <%= fmtNumber(value) %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+        <% } else if (format === 'decimal') { %>
+        <%= fmtDecimal(value, 1) %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+        <% } else if (format === 'duration') { %>
+        <% const d = fmtDurationParts(value); %>
+        <%= d.m %><span class="is-size-6"> min</span> <%= d.s %><span class="is-size-6"> sec</span>
+        <% } else { %>
+        <%= value %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+        <% } %>
+        <% } %>
+      </p>
+    </div>
+
+    <!-- Date below value -->
+    <% if (_datetime) { %>
+    <p class="is-size-6 has-text-grey ml-6"><%= fmtDateLong(_datetime) %></p>
+    <% } %>
+
+    <!-- Delta full width -->
+    <% if (delta != null) { %>
+    <p id="<%= _uid %>-delta" title="See game(s) in the previous time period" class="is-size-6 is-clickable mt-2 mx-2 
+          <%= (delta > 0 ? (_flip_colors ? 'has-text-danger' : 'has-text-success') 
+              : (delta < 0 ? (_flip_colors ? 'has-text-success' : 'has-text-danger') : '') ) %>">
+      <%= (delta>0 ? '▲' : delta<0 ? '▼' : '▶' ) %>
+      <% if (format === 'percent') { %>
+      <%= fmtDecimal(delta, 1) %><% if (unit) { %><span class="is-size-6"><%= unit %></span><% } %>
+      <% } else if (format === 'number') { %>
+      <%= fmtNumber(delta) %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+      <% } else if (format === 'decimal') { %>
+      <%= fmtDecimal(delta, 1) %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+      <% } else if (format === 'duration') { %>
+      <% const pd = fmtDurationParts(Math.abs(delta)); %>
+      <%- (delta > 0 ? '+' : (delta < 0 ? '-' : '')) + (pd ? (pd.m + ' min ' + pd.s + ' sec') : '-') %>
+      <% } else { %>
+      <%= delta %><% if (unit) { %> <span class="is-size-6"><%= unit %></span><% } %>
+      <% } %>
+      (<%= pct_change != null ? (fmtDecimal(pct_change, 1) + '%') : 'N/A' %>)
+    </p>
+    <% } %>
+  </div>
+
+
+  <div id="<%= _uid %>-explanation" class="is-hidden" role="region" aria-live="polite">
+    <div class="content"><%- explanation %></div>
+  </div>
+</fieldset>
+
+<script>
+  (function() {
+    try {
+      const uid = '<%= _uid %>';
+      const btn = document.getElementById(uid + '-btn');
+      const explanation = document.getElementById(uid + '-explanation');
+      const content = document.getElementById(uid + '-content');
+      const value = document.getElementById(uid + '-value');
+      const delta = document.getElementById(uid + '-delta');
+      const icon = btn.querySelector('i');
+
+      if (!btn || !explanation || !content || !icon) return;
+
+      function toggle() {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+          btn.setAttribute('aria-expanded', 'false');
+          explanation.classList.add('is-hidden');
+          content.style.display = '';
+          // swap back to question circle
+          icon.classList.remove('fa-circle-xmark');
+          icon.classList.add('fa-circle-question');
+        } else {
+          btn.setAttribute('aria-expanded', 'true');
+          explanation.classList.remove('is-hidden');
+          content.style.display = 'none';
+          // swap to x mark
+          icon.classList.remove('fa-circle-question');
+          icon.classList.add('fa-circle-xmark');
+        }
+      }
+
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggle();
+      });
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          if (btn.getAttribute('aria-expanded') === 'true') toggle();
+        }
+      });
+
+      const query_string = '<%- query_string || "" %>';
+      const _current_game_ids = '<%= (typeof current_game_ids !== 'undefined') ? current_game_ids.join(',') : null %>';
+      const _previous_game_ids = '<%= (typeof previous_game_ids !== 'undefined') ? previous_game_ids.join(',') : null %>';
+
+      value?.addEventListener('click', () => {
+        // Parse existing query string (remove leading '?' if present)
+        const params = new URLSearchParams(query_string.replace(/^\?/, ''));
+
+        if (_current_game_ids) {
+          params.set('game_ids', _current_game_ids);
+        }
+
+        window.location.href = `/stats/scores?${params.toString()}`;
+      });
+
+      delta?.addEventListener('click', () => {
+        // Parse existing query string (remove leading ? if present)
+        const params = new URLSearchParams(query_string.replace(/^\?/, ''));
+
+        const origSince = parseInt(params.get('since'), 10);
+
+        if (!isNaN(origSince)) {
+          // Multiply 'since' by 2
+          params.set('since', origSince * 2);
+
+          // Add 'until' equal to original since
+          params.set('until', origSince);
+        }
+
+        if (_previous_game_ids) {
+          params.set('game_ids', _previous_game_ids);
+        }
+
+        window.location.href = `/stats/scores?${params.toString()}`;
+      });
+    } catch (e) {
+      console.error('stat_box toggle init error', e);
+    }
+  })();
+</script>

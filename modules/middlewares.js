@@ -94,4 +94,18 @@ export default {
 
 		if (next) next();
 	},
+
+	attachQueryString(req, res, next) {
+		const allowed = ['since', 'start_level', 'competition'];
+		const qs = new URLSearchParams();
+
+		for (const key of allowed) {
+			if (req.query[key] != null) {
+				qs.append(key, req.query[key]);
+			}
+		}
+
+		res.locals.query_string = qs.toString() ? `?${qs.toString()}` : '';
+		next();
+	},
 };

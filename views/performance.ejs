@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <%- include('partials/gtm_head') %>
+  <title>NestrisChamps: Performance</title>
+  <link rel="stylesheet" href="/vendor/bulma.1.0.4.min.css">
+  <link rel="stylesheet" href="/vendor/fontawesome.all.min.css">
+  <style>
+    .navbar-item img {
+      max-height: 2rem;
+    }
+
+    .columns.is-multiline {
+      align-items: stretch;
+    }
+
+    .column {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .column .fieldset {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .icon-col {
+      display: inline-block;
+      width: 3rem;
+      text-align: center;
+    }
+
+    .fieldset {
+      border-radius: 6px;
+      box-shadow: 0 0.5em 1em -0.125em rgba(10, 10, 10, .1), 0 0 0 1px rgba(10, 10, 10, .02);
+
+      padding: 1.25rem;
+      border: 1px solid #ccc
+    }
+
+    .fieldset>legend {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0 5px;
+      width: max-content;
+      border: 0 none
+    }
+
+    .fieldset.content ul {
+      margin-top: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <%- include('partials/gtm_body') %>
+  <%- include('header') %>
+
+  <section class="section">
+    <div class="container pb-4">
+      <h1 class="title is-1">Performance Summary</h1>
+      <%- include('partials/filters') %>
+    </div>
+
+    <div class="container">
+      <!-- Highlights -->
+      <div class="is-flex is-justify-content-space-between is-align-items-end">
+        <h1 class="title is-5 mb-4">Highlights</h1>
+      </div>
+      <div class="columns is-multiline is-variable is-3">
+        <% const highlightStatConfigs = [
+            { title: 'Highest Score', key: 'highest_score', icon: '🏆', format: 'number', unit: 'points' },
+            { title: 'Highest Transition Score', key: 'highest_transition', description: 'highest score at transition', icon: '🚀', format: 'number', unit: 'points' },
+            { title: 'Highest Post Score', description: 'highest points scored after transition', key: 'highest_post', icon: '⏩', unit: 'points' },
+            { title: 'Highest Lines Cleared', key: 'highest_lines', icon: '➖', unit: 'lines' },
+          ]; 
+      %>
+
+        <% highlightStatConfigs.forEach(config => { %>
+        <div class="column is-12-mobile is-6-tablet is-6-desktop is-3-widescreen">
+          <%- include('partials/stat_box', {
+                title: config.title,
+                description: config.description || config.title.toLowerCase(),
+                icon: config.icon,
+                unit: config.unit,
+                format: config.format || 'number',
+                value: stats[config.key]?.value,
+                delta: stats[config.key]?.delta,
+                pct_change: stats[config.key]?.pct_change,
+                datetime: stats[config.key]?.datetime,
+                current_game_ids: stats[config.key]?.current_ids,
+                previous_game_ids: stats[config.key]?.previous_ids
+          }) %>
+        </div>
+        <% }) %>
+      </div>
+
+      <!-- Averages -->
+      <div class="is-flex is-justify-content-space-between">
+        <h1 class="title is-5 mb-4">Averages</h1>
+      </div>
+      <div class="columns is-multiline is-variable is-3">
+        <% const averageStatConfigs = [
+            { title: 'Average Score', key: 'avg_score', icon: '🏆', unit: 'points' },
+            { title: 'Average Transition Score', description: 'average score at transition', key: 'avg_transition', icon: '🚀', unit: 'points' },
+            { title: 'Average Post Score', key: 'avg_post', description: 'average points scored after transition', icon: '⏩', unit: 'points' },
+            { title: 'Average Lines Cleared', key: 'avg_lines', icon: '➖', unit: 'lines' },
+          ]; 
+      %>
+
+        <% averageStatConfigs.forEach(config => { %>
+        <div class="column is-12-mobile is-6-tablet is-6-desktop is-3-widescreen">
+          <%- include('partials/stat_box', {
+                title: config.title,
+                description: config.description || config.title.toLowerCase(),
+                icon: config.icon,
+                unit: config.unit,
+                format: config.format || 'number',
+                value: stats[config.key]?.value,
+                delta: stats[config.key]?.delta,
+                pct_change: stats[config.key]?.pct_change,
+          }) %>
+        </div>
+        <% }) %>
+      </div>
+
+      <!-- Overall -->
+      <div class="is-flex is-justify-content-space-between">
+        <h1 class="title is-5 mb-2">Overall</h1>
+      </div>
+      <div class="columns is-multiline is-variable is-3">
+        <% const overallStatConfigs = [
+            { title: 'Games Played', description: 'number of games played', key: 'num_games', icon: '🎮', unit: 'games' },
+            { title: 'Transition Rate', description: 'percentage of games made to transition', key: 'transition_rate', icon: '📈', format: 'percent', unit: '%' },
+            { title: 'Score StdDev', description: 'standard deviation of scores (lower = more consistent)', key: 'score_stddev', icon: '📊', unit: null, flip_colors: true },
+            { title: 'Maxouts Achieved', description: 'number of maxouts achieved', key: 'num_maxouts', icon: '⭐', unit: 'maxouts' }
+          ]; 
+      %>
+
+        <% overallStatConfigs.forEach(config => { %>
+        <div class="column is-12-mobile is-6-tablet is-6-desktop is-3-widescreen">
+          <%- include('partials/stat_box', {
+                title: config.title,
+                description: config.description || config.title.toLowerCase(),
+                icon: config.icon,
+                unit: config.unit,
+                format: config.format || 'number',
+                value: stats[config.key]?.value,
+                delta: stats[config.key]?.delta,
+                pct_change: stats[config.key]?.pct_change,
+                flip_colors: config.flip_colors || false
+          }) %>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+  </section>
+</body>
+
+</html>
