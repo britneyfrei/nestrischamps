@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 
 import app from './modules/app.js';
 
+const port = process.env.PORT || 5000;
 let server;
 
 if (process.env.TLS_KEY && process.env.TLS_CERT) {
@@ -19,13 +20,15 @@ if (process.env.TLS_KEY && process.env.TLS_CERT) {
 	server = Server(app);
 }
 
+// WebSocket setup
 const wss = new WebSocketServer({
 	clientTracking: false,
 	noServer: true,
 });
 
 import websocketInitializer from './routes/websocket.js';
-
 websocketInitializer(server, wss);
 
-server.listen(process.env.PORT || 5000);
+server.listen(port, '0.0.0.0', () => {
+	console.log(`Server listening on port ${port}`);
+});
