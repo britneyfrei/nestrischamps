@@ -1,34 +1,37 @@
 import { WebSocketServer } from 'ws';
-import { Server } from 'http';
-import { createServer } from 'https';
+import { createServer as createHttpServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import { readFileSync } from 'fs';
 
 import app from './modules/app.js';
+import websocketInitializer from './routes/websocket.js';
 
 const port = process.env.PORT || 5000;
+
 let server;
 
+// HTTPS if both TLS_KEY and TLS_CERT are provided (optional)
 if (process.env.TLS_KEY && process.env.TLS_CERT) {
-	const options = {
-		key: readFileSync(process.env.TLS_KEY),
-		cert: readFileSync(process.env.TLS_CERT),
-	};
-	server = createServer(options, app);
+  const options = {
+    key: readFileSync(process.env.TLS_KEY),
+    cert: readFileSync(process.env.TLS_CERT),
+  };
+  server = createHttpsServer(options, app);
 } else if (process.env.TLS_KEY || process.env.TLS_CERT) {
-	throw new Error('HTTPS requires both TLS_KEY and TLS_CERT');
+  throw new Error('HTTPS requires both TLS_KEY and TLS_CERT');
 } else {
-	server = Server(app);
+  server = createHttpServer(app); // HTTP for Fly
 }
 
-// WebSocket setup
+// WebSocket server
 const wss = new WebSocketServer({
-	clientTracking: false,
-	noServer: true,
+  clientTracking: false,
+  noServer: true,
 });
 
-import websocketInitializer from './routes/websocket.js';
 websocketInitializer(server, wss);
 
+// Bind to 0.0.0.0 so Fly can reach it
 server.listen(port, '0.0.0.0', () => {
-	console.log(`Server listening on port ${port}`);
+  console.log(`Server listening on port ${port}`);
 });
