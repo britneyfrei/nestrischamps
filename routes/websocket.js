@@ -12,8 +12,9 @@ export default function init(server, wss) {
 	server.on('upgrade', async function (request, socket, head) {
 		console.log(`WS: ${request.url}`);
 
-		// nestrischamps URL, parsed
-		request.nc_url = new URL(request.url, 'ws://nestrischamps.io');
+		const protocol = request.headers['x-forwarded-proto'] || 'ws';
+		const host = request.headers['host']; // Fly sets the Host header
+		request.nc_url = new URL(request.url, `${protocol}://${host}`);
 
 		let m = request.nc_url.pathname.match(
 			/^\/ws\/replay\/([a-z0-9_-]+)\/((\d+)(-(\d+)){0,7})/

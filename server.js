@@ -7,6 +7,7 @@ import app from './modules/app.js';
 import websocketInitializer from './routes/websocket.js';
 
 const port = process.env.PORT || 5000;
+console.log(`PORT: ${port}`);
 
 let server;
 
