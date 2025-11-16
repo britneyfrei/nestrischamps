@@ -8,6 +8,8 @@ console.log(`DB initialization`, {
 	IS_PUBLIC_SERVER: isPublicServer,
 });
 
+console.log(`PORT: ${process.env.PORT}`);
+
 pool = new pg.Pool({
 	connectionString: process.env.DATABASE_URL,
 	ssl: {
